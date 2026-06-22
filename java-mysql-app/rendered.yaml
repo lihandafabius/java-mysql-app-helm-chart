@@ -1,0 +1,101 @@
+---
+# Source: java-mysql-app/templates/secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+stringData:
+  DB_USER: "myuser"
+  DB_PWD: "mypassword"
+---
+# Source: java-mysql-app/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+data:
+  DB_SERVER: "mysql-primary"
+  DB_NAME: "my_database"
+---
+# Source: java-mysql-app/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: java-mysql-app
+spec:
+  type: ClusterIP
+  selector:
+    app: java-mysql-app
+
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+# Source: java-mysql-app/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-mysql-app
+  labels:
+    app: java-mysql-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: java-mysql-app
+  template:
+    metadata:
+      labels:
+        app: java-mysql-app
+    spec:
+      imagePullSecrets:
+      - name: my-registry-key
+      containers:
+      - name: java-mysql-app
+        image: "lihanda/demo-app:java-app-1.0"
+        imagePullPolicy: Always # Everytime a pod is created, it will pull the image from the registry. In production, you may want to pin a specific version to avoid unexpected upgrades.
+
+        ports:
+        - containerPort: 8080
+
+        env:
+        - name: DB_SERVER
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
+              key: DB_SERVER
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: mysql-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: DB_USER
+        - name: DB_PWD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: DB_PWD
+---
+# Source: java-mysql-app/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mysql-java-app-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: k8s-default-nginxing-6b75f4d2cd-1671b0b698800598.elb.eu-north-1.amazonaws.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: java-mysql-app
+            port:
+              number: 8080
